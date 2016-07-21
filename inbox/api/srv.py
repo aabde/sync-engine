@@ -23,6 +23,9 @@ from inbox.models.session import session_scope
 from inbox.api.err import (err, APIException, NotFoundError, InputError,
                            AccountDoesNotExistError)
 from inbox.basicauth import NotSupportedError
+from inbox.models.util import delete_namespace
+from inbox.heartbeat.status import clear_heartbeat_status
+import re
 
 app = Flask(__name__)
 # Handle both /endpoint and /endpoint/ without redirecting.
@@ -49,7 +52,8 @@ for code in default_exceptions.iterkeys():
 def auth():
     """ Check for account ID on all non-root URLS """
     if request.path in ('/accounts', '/accounts/', '/', '/account/provider', '/account/add') \
-                       or request.path.startswith('/w/'):
+                       or request.path.startswith('/w/') \
+                       or re.match(r"/accounts/[0-9]+/delete", request.path):
         return
 
     if not request.authorization or not request.authorization.username:
@@ -136,6 +140,29 @@ def logout():
         401,
         {'WWW-Authenticate': 'Basic realm="API Access Token Required"'}))
 
+@app.route('/accounts/<id>/delete', methods=['DELETE'])
+def accounts_delete(id):
+    with global_session_scope() as db_session:
+        account = db_session.query(Account).get(int(float(id)))
+        if not account:
+            return err(400, 'Account with id {} does NOT exist.'.format(id))
+
+        email_address = account.email_address
+        namespace_id = account.namespace.id
+        account.mark_deleted()
+        db_session.commit()
+
+        try:
+            delete_namespace(int(float(id)), namespace_id)
+        except Exception as e:
+            return err(400, 'Database data deletion failed! Error: {}'.format(str(e)))
+
+        clear_heartbeat_status(int(float(id)))
+
+        encoder = APIEncoder()
+        return encoder.jsonify(None)
+
+
 @app.route('/account/provider', methods=['POST'])
 def account_provider():
     data = request.get_json(force=True)
@@ -158,26 +185,28 @@ def account_add():
     with session_scope(0) as db_session:
         account = db_session.query(Account).filter_by(
             email_address=data.get('email_address')).first()
-        #if account is not None:
-        #    return err(400, 'Already have this account!')
+        if account is not None:
+            return err(400, 'Already have this account!')
 
-    auth_info = {}
+        auth_info = {}
 
-    auth_info['provider'] = data.get('provider')
-    auth_handler = handler_from_provider(data.get('provider'))
-    auth_info.update(auth_handler.interactive_auth(data.get('email_address')))
+        auth_info['provider'] = data.get('provider')
+        auth_handler = handler_from_provider(data.get('provider'))
+        print 'AABDE'
+        print auth_handler
+        auth_info.update(auth_handler.interactive_auth(data.get('email_address')))
 
-    account = auth_handler.create_account(data.get('email_address'), auth_info)
+        account = auth_handler.create_account(data.get('email_address'), auth_info)
 
-    try:
-        if auth_handler.verify_account(account):
-            db_session.add(account)
-            db_session.commit()
-    except NotSupportedError as e:
-        return err(400, 'Error registering account')
+        try:
+            if auth_handler.verify_account(account):
+                db_session.add(account)
+                db_session.commit()
+        except NotSupportedError as e:
+            return err(400, 'Error registering account')
 
-    encoder = APIEncoder()
-    return encoder.jsonify(db_session.query(Namespace).join(Account).filter_by(email_address=data.get('email_address')).first())
+        encoder = APIEncoder()
+        return encoder.jsonify(db_session.query(Namespace).join(Account).filter_by(email_address=data.get('email_address')).first())
     
 
 app.register_blueprint(ns_api)
