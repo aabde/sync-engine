@@ -16,6 +16,14 @@ from ns_api import DEFAULT_LIMIT
 
 from inbox.webhooks.gpush_notifications import app as webhooks_api
 
+from inbox.util.startup import preflight
+from inbox.util.url import provider_from_address
+from inbox.auth.base import handler_from_provider
+from inbox.models.session import session_scope
+from inbox.api.err import (err, APIException, NotFoundError, InputError,
+                           AccountDoesNotExistError)
+from inbox.basicauth import NotSupportedError
+
 app = Flask(__name__)
 # Handle both /endpoint and /endpoint/ without redirecting.
 # Note that we need to set this *before* registering the blueprint.
@@ -40,7 +48,7 @@ for code in default_exceptions.iterkeys():
 @app.before_request
 def auth():
     """ Check for account ID on all non-root URLS """
-    if request.path in ('/accounts', '/accounts/', '/') \
+    if request.path in ('/accounts', '/accounts/', '/', '/account/provider', '/account/add') \
                        or request.path.startswith('/w/'):
         return
 
@@ -128,6 +136,49 @@ def logout():
         401,
         {'WWW-Authenticate': 'Basic realm="API Access Token Required"'}))
 
+@app.route('/account/provider', methods=['POST'])
+def account_provider():
+    data = request.get_json(force=True)
+    if data.get('email_address'):
+        provider = provider_from_address(data.get('email_address'))
+        encoder = APIEncoder()
+        return encoder.jsonify(provider)
+    else:
+        return err(400, 'email_address required')
+
+@app.route('/account/add', methods=['POST'])
+def account_add():
+    data = request.get_json(force=True)
+
+    if not data.get('provider') or not data.get('email_address'):
+        return err(400, 'email_address required')
+
+    preflight()
+
+    with session_scope(0) as db_session:
+        account = db_session.query(Account).filter_by(
+            email_address=data.get('email_address')).first()
+        #if account is not None:
+        #    return err(400, 'Already have this account!')
+
+    auth_info = {}
+
+    auth_info['provider'] = data.get('provider')
+    auth_handler = handler_from_provider(data.get('provider'))
+    auth_info.update(auth_handler.interactive_auth(data.get('email_address')))
+
+    account = auth_handler.create_account(data.get('email_address'), auth_info)
+
+    try:
+        if auth_handler.verify_account(account):
+            db_session.add(account)
+            db_session.commit()
+    except NotSupportedError as e:
+        return err(400, 'Error registering account')
+
+    encoder = APIEncoder()
+    return encoder.jsonify(db_session.query(Namespace).join(Account).filter_by(email_address=data.get('email_address')).first())
+    
 
 app.register_blueprint(ns_api)
 app.register_blueprint(webhooks_api)  # /w/...
