@@ -26,6 +26,7 @@ from inbox.basicauth import NotSupportedError
 from inbox.models.util import delete_namespace
 from inbox.heartbeat.status import clear_heartbeat_status
 import re
+from inbox.util.url import url_concat
 
 app = Flask(__name__)
 # Handle both /endpoint and /endpoint/ without redirecting.
@@ -51,7 +52,7 @@ for code in default_exceptions.iterkeys():
 @app.before_request
 def auth():
     """ Check for account ID on all non-root URLS """
-    if request.path in ('/accounts', '/accounts/', '/', '/account/provider', '/account/add') \
+    if request.path in ('/accounts', '/accounts/', '/', '/provider', '/accounts/create') \
                        or request.path.startswith('/w/') \
                        or re.match(r"/accounts/[0-9]+/delete", request.path):
         return
@@ -162,42 +163,98 @@ def accounts_delete(id):
         encoder = APIEncoder()
         return encoder.jsonify(None)
 
-
-@app.route('/account/provider', methods=['POST'])
+@app.route('/provider', methods=['POST'])
 def account_provider():
     data = request.get_json(force=True)
-    if data.get('email_address'):
-        provider = provider_from_address(data.get('email_address'))
-        encoder = APIEncoder()
-        return encoder.jsonify(provider)
-    else:
+    email_address = data.get('email_address')
+    if not email_address:
         return err(400, 'email_address required')
+    else:
+        response = {}
+        provider = provider_from_address(email_address)
+        print 'AABDE'
+        print provider
+        response['provider'] = provider
+        if provider == 'gmail':
+            auth_handler = handler_from_provider(provider)
+            url_args = {'redirect_uri': auth_handler.OAUTH_REDIRECT_URI,
+                        'client_id': auth_handler.OAUTH_CLIENT_ID,
+                        'response_type': 'code',
+                        'scope': auth_handler.OAUTH_SCOPE,
+                        'access_type': 'offline'}
+            url_args['login_hint'] = email_address
+            url = url_concat(auth_handler.OAUTH_AUTHENTICATE_URL, url_args)
+            response['auth_url'] = url
+        encoder = APIEncoder()
+        return encoder.jsonify(response)
 
-@app.route('/account/add', methods=['POST'])
+@app.route('/accounts/create', methods=['POST'])
 def account_add():
     data = request.get_json(force=True)
+    auth_info = {}
 
-    if not data.get('provider') or not data.get('email_address'):
+    if not data.get('email_address'):
         return err(400, 'email_address required')
+
+    email_address = data.get('email_address')
+    provider = data.get('provider')
+    
+    if not provider:
+        provider = provider_from_address(email_address)
+
+    if provider == 'unknown':
+        provider = 'custom'
+
+    auth_handler = handler_from_provider(provider)
+    
+    if provider == 'custom':
+        if not (data.get('imap_server_host') and data.get('imap_password') and data.get('smtp_server_host')):
+            return err(400, 'Missing information, cannot create account')
+        else:
+            auth_info = {
+                'email': email_address,
+                'provider': provider,
+                'imap_server_host': data.get('imap_server_host'),
+                'imap_server_port': int(float(data.get('imap_server_port'))) if data.get('imap_server_port') else 993,
+                'imap_username': data.get('imap_username') if data.get('imap_username') else email_address,
+                'imap_password': data.get('imap_password'),
+                'smtp_server_host': data.get('smtp_server_host'),
+                'smtp_server_port': int(float(data.get('smtp_server_port'))) if data.get('smtp_server_port') else 587,
+                'smtp_username': data.get('smtp_username') if data.get('smtp_username') else email_address,
+                'smtp_password': data.get('smtp_password') if data.get('smtp_password') else data.get('imap_password'),
+                'ssl_required': data.get('ssl_required') == 'true'
+            }
+    elif provider == 'gmail':
+        if not data.get('auth_code'):
+            return err(400, 'Missing information, cannot create account')
+        auth_code = data.get('auth_code')
+        try:
+            auth_info = auth_handler._get_authenticated_user(auth_code)
+            auth_info['provider'] = provider
+            auth_info['contacts'] = True
+            auth_info['events'] = True
+        except OAuthError:
+            return err(400, 'Invalid authorization code')
+    else:
+        if not data.get('password'):
+            return err(400, 'Missing information, cannot create account')
+        else:
+            auth_info = {
+                'email': email_address,
+                'provider': provider,
+                'password': data.get('password')
+            }
 
     preflight()
 
     with session_scope(0) as db_session:
         account = db_session.query(Account).filter_by(
-            email_address=data.get('email_address')).first()
+            email_address=email_address).first()
         if account is not None:
             return err(400, 'Already have this account!')
 
-        auth_info = {}
-
-        auth_info['provider'] = data.get('provider')
-        auth_handler = handler_from_provider(data.get('provider'))
-        print 'AABDE'
-        print auth_handler
-        auth_info.update(auth_handler.interactive_auth(data.get('email_address')))
-
-        account = auth_handler.create_account(data.get('email_address'), auth_info)
-
+        account = auth_handler.create_account(email_address, auth_info)
+        
         try:
             if auth_handler.verify_account(account):
                 db_session.add(account)
@@ -206,7 +263,7 @@ def account_add():
             return err(400, 'Error registering account')
 
         encoder = APIEncoder()
-        return encoder.jsonify(db_session.query(Namespace).join(Account).filter_by(email_address=data.get('email_address')).first())
+        return encoder.jsonify(db_session.query(Namespace).join(Account).filter_by(email_address=email_address).first())
     
 
 app.register_blueprint(ns_api)
