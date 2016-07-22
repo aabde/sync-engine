@@ -52,9 +52,10 @@ for code in default_exceptions.iterkeys():
 @app.before_request
 def auth():
     """ Check for account ID on all non-root URLS """
-    if request.path in ('/accounts', '/accounts/', '/', '/provider', '/accounts/create') \
-                       or request.path.startswith('/w/') \
-                       or re.match(r"/accounts/[0-9]+/delete", request.path):
+    if request.path in (# '/accounts', '/accounts/', \
+                        '/', '/provider', '/accounts/create') \
+                        or request.path.startswith('/w/') \
+                        or re.match(r"/accounts/[0-9]+/delete", request.path):
         return
 
     if not request.authorization or not request.authorization.username:
@@ -104,32 +105,32 @@ def finish(response):
     return response
 
 
-@app.route('/accounts/')
-def ns_all():
-    """ Return all namespaces """
-    # We do this outside the blueprint to support the case of an empty
-    # public_id.  However, this means the before_request isn't run, so we need
-    # to make our own session
-    with global_session_scope() as db_session:
-        parser = reqparse.RequestParser(argument_class=ValidatableArgument)
-        parser.add_argument('limit', default=DEFAULT_LIMIT, type=limit,
-                            location='args')
-        parser.add_argument('offset', default=0, type=int, location='args')
-        parser.add_argument('email_address', type=bounded_str, location='args')
-        args = strict_parse_args(parser, request.args)
+# @app.route('/accounts/')
+# def ns_all():
+#     """ Return all namespaces """
+#     # We do this outside the blueprint to support the case of an empty
+#     # public_id.  However, this means the before_request isn't run, so we need
+#     # to make our own session
+#     with global_session_scope() as db_session:
+#         parser = reqparse.RequestParser(argument_class=ValidatableArgument)
+#         parser.add_argument('limit', default=DEFAULT_LIMIT, type=limit,
+#                             location='args')
+#         parser.add_argument('offset', default=0, type=int, location='args')
+#         parser.add_argument('email_address', type=bounded_str, location='args')
+#         args = strict_parse_args(parser, request.args)
 
-        query = db_session.query(Namespace)
-        if args['email_address']:
-            query = query.join(Account)
-            query = query.filter_by(email_address=args['email_address'])
+#         query = db_session.query(Namespace)
+#         if args['email_address']:
+#             query = query.join(Account)
+#             query = query.filter_by(email_address=args['email_address'])
 
-        query = query.limit(args['limit'])
-        if args['offset']:
-            query = query.offset(args['offset'])
+#         query = query.limit(args['limit'])
+#         if args['offset']:
+#             query = query.offset(args['offset'])
 
-        namespaces = query.all()
-        encoder = APIEncoder()
-        return encoder.jsonify(namespaces)
+#         namespaces = query.all()
+#         encoder = APIEncoder()
+#         return encoder.jsonify(namespaces)
 
 
 @app.route('/logout')
