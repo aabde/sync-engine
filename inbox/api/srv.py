@@ -27,11 +27,13 @@ from inbox.models.util import delete_namespace
 from inbox.heartbeat.status import clear_heartbeat_status
 import re
 from inbox.util.url import url_concat
+import os
 
 app = Flask(__name__)
 # Handle both /endpoint and /endpoint/ without redirecting.
 # Note that we need to set this *before* registering the blueprint.
 app.url_map.strict_slashes = False
+app.config['API_KEY'] = os.environ['MAIL_API_KEY']
 
 
 def default_json_error(ex):
@@ -48,9 +50,17 @@ def default_json_error(ex):
 for code in default_exceptions.iterkeys():
     app.error_handler_spec[None][code] = default_json_error
 
-
 @app.before_request
 def auth():
+    AUTH_ERROR_MSG = ("Could not verify access credential.", 401,
+                     {'WWW-Authenticate': 'Basic realm="API '
+                      'Access Token Required"'})
+
+    token = request.headers.get('Token', None)
+
+    if not token or token != app.config['API_KEY']:
+        return make_response(AUTH_ERROR_MSG)
+
     """ Check for account ID on all non-root URLS """
     if request.path in (# '/accounts', '/accounts/', \
                         '/', '/provider', '/accounts/create') \
@@ -59,10 +69,6 @@ def auth():
         return
 
     if not request.authorization or not request.authorization.username:
-
-        AUTH_ERROR_MSG = ("Could not verify access credential.", 401,
-                             {'WWW-Authenticate': 'Basic realm="API '
-                              'Access Token Required"'})
 
         auth_header = request.headers.get('Authorization', None)
 
@@ -86,10 +92,7 @@ def auth():
             g.namespace_id = namespace.id
             g.account_id = namespace.account.id
         except NoResultFound:
-            return make_response((
-                "Could not verify access credential.", 401,
-                {'WWW-Authenticate': 'Basic realm="API '
-                 'Access Token Required"'}))
+            return make_response(AUTH_ERROR_MSG)
 
 
 @app.after_request
@@ -173,8 +176,8 @@ def account_provider():
     else:
         response = {}
         provider = provider_from_address(email_address)
-        print 'AABDE'
-        print provider
+        if provider == 'unknown':
+            provider = 'custom'
         response['provider'] = provider
         if provider == 'gmail':
             auth_handler = handler_from_provider(provider)
