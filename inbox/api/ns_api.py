@@ -171,7 +171,7 @@ def one_account():
 
 
 @app.route('/account/delete', methods=['DELETE'])
-def accounts_delete():
+def account_delete():
     account_id = g.namespace.account_id
     account = g.db_session.query(Account).get(account_id)
     if not account:

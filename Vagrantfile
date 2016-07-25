@@ -21,6 +21,17 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     vmware.vmx["numvcpus"] = "1"
   end
 
+  config.ssh.private_key_path = "~/.ssh/id_rsa"
+  config.vm.define "mail.inchbase.com"
+  config.vm.provider :digital_ocean do |provider|
+    provider.token = "#{ENV['DIGITAL_OCEAN_TOKEN']}"
+    provider.image = "ubuntu-12-04-x64"
+    provider.region = "ams3"
+    provider.size = "8GB"
+    #provider.ssh_key_name = "Vagrant"
+    provider.name = "mail.inchbase.com"
+  end
+
   config.ssh.forward_agent = true
 
   # config.vm.customize [
