@@ -69,8 +69,7 @@ def auth():
         return make_response(AUTH_ERROR_MSG)
 
     """ Check for account ID on all non-root URLS """
-    if request.path in (# '/accounts', '/accounts/', \
-                        '/', '/provider', '/accounts/create') \
+    if request.path in ('/accounts', '/accounts/', '/', '/provider', '/accounts/create') \
                         or request.path.startswith('/w/') \
                         or re.match(r"/accounts/[0-9]+/delete", request.path):
         return
