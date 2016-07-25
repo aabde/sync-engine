@@ -35,6 +35,13 @@ app = Flask(__name__)
 app.url_map.strict_slashes = False
 app.config['API_KEY'] = os.environ['MAIL_API_KEY']
 
+def secure_compare(a, b):
+    if len(a) != len(b):
+        return False
+    res = 0
+    for x, y in zip(a, b):
+        res |= ord(x) ^ ord(y)
+    return res == 0
 
 def default_json_error(ex):
     """ Exception -> flask JSON responder """
@@ -58,7 +65,7 @@ def auth():
 
     token = request.headers.get('Token', None)
 
-    if not token or token != app.config['API_KEY']:
+    if not secure_compare(token, app.config['API_KEY']):
         return make_response(AUTH_ERROR_MSG)
 
     """ Check for account ID on all non-root URLS """
@@ -107,33 +114,36 @@ def finish(response):
         response.headers['Access-Control-Allow-Credentials'] = 'true'
     return response
 
+accounts_disabled = True
 
-# @app.route('/accounts/')
-# def ns_all():
-#     """ Return all namespaces """
-#     # We do this outside the blueprint to support the case of an empty
-#     # public_id.  However, this means the before_request isn't run, so we need
-#     # to make our own session
-#     with global_session_scope() as db_session:
-#         parser = reqparse.RequestParser(argument_class=ValidatableArgument)
-#         parser.add_argument('limit', default=DEFAULT_LIMIT, type=limit,
-#                             location='args')
-#         parser.add_argument('offset', default=0, type=int, location='args')
-#         parser.add_argument('email_address', type=bounded_str, location='args')
-#         args = strict_parse_args(parser, request.args)
+@app.route('/accounts/')
+def ns_all():
+    if accounts_disabled:
+        return err(404, 'Not found')
+    """ Return all namespaces """
+    # We do this outside the blueprint to support the case of an empty
+    # public_id.  However, this means the before_request isn't run, so we need
+    # to make our own session
+    with global_session_scope() as db_session:
+        parser = reqparse.RequestParser(argument_class=ValidatableArgument)
+        parser.add_argument('limit', default=DEFAULT_LIMIT, type=limit,
+                            location='args')
+        parser.add_argument('offset', default=0, type=int, location='args')
+        parser.add_argument('email_address', type=bounded_str, location='args')
+        args = strict_parse_args(parser, request.args)
 
-#         query = db_session.query(Namespace)
-#         if args['email_address']:
-#             query = query.join(Account)
-#             query = query.filter_by(email_address=args['email_address'])
+        query = db_session.query(Namespace)
+        if args['email_address']:
+            query = query.join(Account)
+            query = query.filter_by(email_address=args['email_address'])
 
-#         query = query.limit(args['limit'])
-#         if args['offset']:
-#             query = query.offset(args['offset'])
+        query = query.limit(args['limit'])
+        if args['offset']:
+            query = query.offset(args['offset'])
 
-#         namespaces = query.all()
-#         encoder = APIEncoder()
-#         return encoder.jsonify(namespaces)
+        namespaces = query.all()
+        encoder = APIEncoder()
+        return encoder.jsonify(namespaces)
 
 
 @app.route('/logout')
