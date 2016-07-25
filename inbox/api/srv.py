@@ -23,9 +23,6 @@ from inbox.models.session import session_scope
 from inbox.api.err import (err, APIException, NotFoundError, InputError,
                            AccountDoesNotExistError)
 from inbox.basicauth import NotSupportedError
-from inbox.models.util import delete_namespace
-from inbox.heartbeat.status import clear_heartbeat_status
-import re
 from inbox.util.url import url_concat
 import os
 
@@ -36,7 +33,7 @@ app.url_map.strict_slashes = False
 app.config['API_KEY'] = os.environ['MAIL_API_KEY']
 
 def secure_compare(a, b):
-    if len(a) != len(b):
+    if not a or not b or len(a) != len(b):
         return False
     res = 0
     for x, y in zip(a, b):
@@ -70,8 +67,7 @@ def auth():
 
     """ Check for account ID on all non-root URLS """
     if request.path in ('/accounts', '/accounts/', '/', '/provider', '/accounts/create') \
-                        or request.path.startswith('/w/') \
-                        or re.match(r"/accounts/[0-9]+/delete", request.path):
+                        or request.path.startswith('/w/'):
         return
 
     if not request.authorization or not request.authorization.username:
@@ -153,28 +149,6 @@ def logout():
         "<meta http-equiv='refresh' content='0; url=/''>.",
         401,
         {'WWW-Authenticate': 'Basic realm="API Access Token Required"'}))
-
-@app.route('/accounts/<id>/delete', methods=['DELETE'])
-def accounts_delete(id):
-    with global_session_scope() as db_session:
-        account = db_session.query(Account).get(int(float(id)))
-        if not account:
-            return err(400, 'Account with id {} does NOT exist.'.format(id))
-
-        email_address = account.email_address
-        namespace_id = account.namespace.id
-        account.mark_deleted()
-        db_session.commit()
-
-        try:
-            delete_namespace(int(float(id)), namespace_id)
-        except Exception as e:
-            return err(400, 'Database data deletion failed! Error: {}'.format(str(e)))
-
-        clear_heartbeat_status(int(float(id)))
-
-        encoder = APIEncoder()
-        return encoder.jsonify(None)
 
 @app.route('/provider', methods=['POST'])
 def account_provider():

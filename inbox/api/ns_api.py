@@ -16,7 +16,7 @@ from sqlalchemy.orm.exc import NoResultFound
 
 from nylas.logging import get_logger
 log = get_logger()
-from inbox.models import (Message, Block, Part, Thread, Namespace,
+from inbox.models import (Account, Message, Block, Part, Thread, Namespace,
                           Contact, Calendar, Event, Transaction,
                           DataProcessingCache, Category, MessageCategory)
 from inbox.models.event import RecurringEvent, RecurringEventOverride
@@ -58,6 +58,8 @@ from inbox.events.ical import (generate_icalendar_invite, send_invite,
 from inbox.events.util import removed_participants
 from inbox.util.blockstore import get_from_blockstore
 from inbox.actions.backends.generic import remote_delete_sent
+from inbox.models.util import delete_namespace
+from inbox.heartbeat.status import clear_heartbeat_status
 
 DEFAULT_LIMIT = 100
 LONG_POLL_REQUEST_TIMEOUT = 120
@@ -166,6 +168,29 @@ def one_account():
     # Use a new encoder object with the expand parameter set.
     encoder = APIEncoder(g.namespace.public_id, args['view'] == 'expanded')
     return encoder.jsonify(g.namespace)
+
+
+@app.route('/account/delete', methods=['DELETE'])
+def accounts_delete():
+    account_id = g.namespace.account_id
+    account = g.db_session.query(Account).get(account_id)
+    if not account:
+        return err(400, 'Account with id {} does NOT exist.'.format(account_id))
+
+    email_address = g.namespace.email_address
+    namespace_id = g.namespace.id
+    account.mark_deleted()
+    g.db_session.commit()
+
+    try:
+        delete_namespace(account_id, namespace_id)
+    except Exception as e:
+        return err(400, 'Database data deletion failed! Error: {}'.format(str(e)))
+
+    clear_heartbeat_status(account_id)
+
+    encoder = APIEncoder()
+    return encoder.jsonify(None)
 
 
 #
