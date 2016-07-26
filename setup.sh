@@ -298,4 +298,12 @@ git config branch.master.rebase true
 # Set proper timezone
 echo 'UTC' | sudo tee /etc/timezone
 
+# Start automatically sync engine and api at launch
+sudo echo "export MAIL_API_KEY='XXX'" >> /home/vagrant/.profile
+source /home/vagrant/.profile
+sudo cp /vagrant/launcher /etc/init.d
+sudo chmod +x /etc/init.d/launcher
+sudo update-rc.d launcher defaults
+echo "launcher OK."
+
 color '35;1' 'Done!.'
