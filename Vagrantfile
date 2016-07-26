@@ -10,26 +10,31 @@ VAGRANTFILE_API_VERSION = "2"
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = "ubuntu/precise64"
 
+  config.vm.provision "fix-no-tty", type: "shell" do |s|
+    s.privileged = false
+    s.inline = "sudo sed -i '/tty/!s/mesg n/tty -s \\&\\& mesg n/' /root/.profile"
+  end
+
   config.vm.provider :virtualbox do |vbox, override|
+    override.vm.network "private_network", ip: "192.168.10.200"
     vbox.memory = 1024
     vbox.cpus = 2
   end
 
   config.vm.provider :vmware_fusion do |vmware, override|
     override.vm.box = "hashicorp/precise64"
+    override.vm.network "private_network", ip: "192.168.10.200"
     vmware.vmx["memsize"] = "1024"
     vmware.vmx["numvcpus"] = "1"
   end
 
-  config.ssh.private_key_path = "~/.ssh/id_rsa"
-  config.vm.define "mail.inchbase.com"
-  config.vm.provider :digital_ocean do |provider|
-    provider.token = "#{ENV['DIGITAL_OCEAN_TOKEN']}"
-    provider.image = "ubuntu-12-04-x64"
-    provider.region = "ams3"
-    provider.size = "8GB"
-    #provider.ssh_key_name = "Vagrant"
-    provider.name = "mail.inchbase.com"
+  config.vm.provider :digital_ocean do |docean, override|
+    override.ssh.private_key_path = "~/.ssh/id_rsa"
+    docean.token = "#{ENV['DIGITAL_OCEAN_TOKEN']}"
+    docean.image = "ubuntu-12-04-x64"
+    docean.region = "ams3"
+    docean.size = "8gb"
+    docean.name = "#{ENV['DIGITAL_OCEAN_MAIL_SERVER_DOMAIN']}"
   end
 
   config.ssh.forward_agent = true
@@ -39,7 +44,6 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   #   "--natdnshostresolver1", "on",
   #   "--natdnsproxy1", "on",
   # ]
-  config.vm.network "private_network", ip: "192.168.10.200"
   config.vm.provision :shell, :inline => "apt-get update -q && cd /vagrant && ./setup.sh"
 
   # Share ports 5000 - 5009
