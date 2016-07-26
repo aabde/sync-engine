@@ -60,7 +60,7 @@ def auth():
                      {'WWW-Authenticate': 'Basic realm="API '
                       'Access Token Required"'})
 
-    token = request.headers.get('Token', None)
+    token = request.headers.get('X-Api-Key', None)
 
     if not secure_compare(token, app.config['API_KEY']):
         return make_response(AUTH_ERROR_MSG)
