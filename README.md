@@ -82,7 +82,7 @@ If you mounted your server on DigitalOcean replace *localhost* in the following 
 
 The endpoint listing all connected accounts `http://localhost:5555/accounts` has been disabled for security reasons.
 
-To use the API you need to pass the API key (default is `XXX` but you should have changed it) into the `X-Api-Key` header of the requests.
+To use the API you need to pass the API key (default is `XXX` but you should have changed it) into the `X-API-KEY` header of the requests.
 
 2 steps to connect a new account:
 
@@ -161,7 +161,7 @@ attribute | description
 You're done, the account is registered and synced. For requests to retreive mail, contacts, and calendar data, your app should pass the `account_id` value returned when adding the account as the "username" parameter in HTTP Basic auth. For example:
 
 ```
-curl -H "X-Api-Key: [MAIL_API_KEY]" --user 'ACCOUNT_ID_VALUE_HERE:' http://localhost:5555/threads
+curl -H "X-API-KEY: [MAIL_API_KEY]" --user '[ACCOUNT_ID]:' http://localhost:5555/threads
 ```
 
 If you are using a web browser and would like to clear your cached HTTP Basic Auth values, simply visit http://localhost:5555/logout and click "Cancel".

@@ -60,7 +60,7 @@ def auth():
                      {'WWW-Authenticate': 'Basic realm="API '
                       'Access Token Required"'})
 
-    token = request.headers.get('X-Api-Key', None)
+    token = request.headers.get('X-API-KEY', None)
 
     if not secure_compare(token, app.config['API_KEY']):
         return make_response(AUTH_ERROR_MSG)
@@ -202,15 +202,30 @@ def account_add():
                 'email': email_address,
                 'provider': provider,
                 'imap_server_host': data.get('imap_server_host'),
-                'imap_server_port': int(float(data.get('imap_server_port'))) if data.get('imap_server_port') else 993,
-                'imap_username': data.get('imap_username') if data.get('imap_username') else email_address,
+                'imap_server_port': 993,
+                'imap_username': email_address,
                 'imap_password': data.get('imap_password'),
                 'smtp_server_host': data.get('smtp_server_host'),
-                'smtp_server_port': int(float(data.get('smtp_server_port'))) if data.get('smtp_server_port') else 587,
-                'smtp_username': data.get('smtp_username') if data.get('smtp_username') else email_address,
-                'smtp_password': data.get('smtp_password') if data.get('smtp_password') else data.get('imap_password'),
+                'smtp_server_port': 587,
+                'smtp_username': email_address,
+                'smtp_password': data.get('imap_password'),
                 'ssl_required': data.get('ssl_required') == 'true'
             }
+            imap_server_port = int(data.get('imap_server_port'))
+            if imap_server_port:
+                auth_info['imap_server_port'] = imap_server_port
+            smtp_server_port = int(data.get('smtp_server_port'))
+            if smtp_server_port:
+                auth_info['smtp_server_port'] = smtp_server_port
+            imap_username = int(data.get('imap_username'))
+            if imap_username:
+                auth_info['imap_username'] = imap_username
+            smtp_username = int(data.get('smtp_username'))
+            if smtp_username:
+                auth_info['smtp_username'] = smtp_username
+            smtp_password = int(data.get('smtp_password'))
+            if smtp_password:
+                auth_info['smtp_password'] = smtp_password
     elif provider == 'gmail':
         if not data.get('auth_code'):
             return err(400, 'Missing information, cannot create account')

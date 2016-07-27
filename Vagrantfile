@@ -30,11 +30,11 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
   config.vm.provider :digital_ocean do |docean, override|
     override.ssh.private_key_path = "~/.ssh/id_rsa"
-    docean.token = "#{ENV['DIGITAL_OCEAN_TOKEN']}"
+    docean.token = ENV['DIGITAL_OCEAN_TOKEN']
     docean.image = "ubuntu-12-04-x64"
     docean.region = "ams3"
     docean.size = "8gb"
-    docean.name = "#{ENV['DIGITAL_OCEAN_MAIL_SERVER_DOMAIN']}"
+    docean.name = ENV['DIGITAL_OCEAN_MAIL_SERVER_DOMAIN']
   end
 
   config.ssh.forward_agent = true
