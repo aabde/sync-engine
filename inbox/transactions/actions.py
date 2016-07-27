@@ -11,8 +11,11 @@ from collections import defaultdict
 from datetime import datetime
 
 import gevent
+from gevent.event import Event
+from gevent.queue import Queue
 import random
 from gevent.coros import BoundedSemaphore
+import weakref
 
 from nylas.logging import get_logger
 from nylas.logging.sentry import log_uncaught_errors
@@ -62,7 +65,7 @@ class SyncbackService(gevent.Greenlet):
     """Asynchronously consumes the action log and executes syncback actions."""
 
     def __init__(self, syncback_id, process_number, total_processes, poll_interval=1,
-                 retry_interval=30):
+                 retry_interval=30, num_workers=NUM_PARALLEL_ACCOUNTS):
         self.process_number = process_number
         self.total_processes = total_processes
         self.poll_interval = poll_interval
@@ -91,9 +94,16 @@ class SyncbackService(gevent.Greenlet):
             self.keys = []
 
         self.log = logger.new(component='syncback')
+        self.num_workers = num_workers
+        self.num_idle_workers = 0
+        self.worker_did_finish = Event()
+        self.worker_did_finish.clear()
+        self.task_queue = Queue()
+        self.running_action_ids = set()
         gevent.Greenlet.__init__(self)
 
     def _process_log(self):
+        before = datetime.utcnow()
         for key in self.keys:
             with session_scope_by_shard_id(key) as db_session:
 
@@ -101,9 +111,6 @@ class SyncbackService(gevent.Greenlet):
                 namespace_ids = [ns_id[0] for ns_id in db_session.query(ActionLog.namespace_id).filter(
                     ActionLog.discriminator == 'actionlog',
                     ActionLog.status == 'pending').distinct()]
-
-                running_action_ids = {worker.action_log_id for worker in
-                                      self.workers}
 
                 # Pick NUM_PARALLEL_ACCOUNTS randomly to make sure we're
                 # executing actions equally for each namespace_id --- we
@@ -115,6 +122,9 @@ class SyncbackService(gevent.Greenlet):
                 else:
                     namespaces_to_process = random.sample(namespace_ids,
                                                           NUM_PARALLEL_ACCOUNTS)
+                self.log.info('Syncback namespace_ids count', shard_id=key,
+                              process=self.process_number,
+                              num_namespace_ids=len(namespace_ids))
 
                 for ns_id in namespaces_to_process:
                     # The discriminator filter restricts actions to IMAP. EAS
@@ -131,7 +141,7 @@ class SyncbackService(gevent.Greenlet):
                         self.log.error('Got a non-existing action, skipping')
                         continue
 
-                    if log_entry.id in running_action_ids:
+                    if log_entry.id in self.running_action_ids:
                         self.log.info('Skipping already running action',
                                       action_id=log_entry.id)
                         continue
@@ -165,17 +175,34 @@ class SyncbackService(gevent.Greenlet):
                                   msg=log_entry.action)
 
                     semaphore = self.account_semaphores[namespace.account_id]
-                    worker = SyncbackWorker(action_name=log_entry.action,
-                                            semaphore=semaphore,
-                                            action_log_id=log_entry.id,
-                                            record_id=log_entry.record_id,
-                                            account_id=namespace.account_id,
-                                            provider=namespace.account.
-                                            verbose_provider,
-                                            retry_interval=self.retry_interval,
-                                            extra_args=log_entry.extra_args)
-                    self.workers.add(worker)
-                    worker.start()
+                    task = SyncbackTask(action_name=log_entry.action,
+                                        semaphore=semaphore,
+                                        action_log_id=log_entry.id,
+                                        record_id=log_entry.record_id,
+                                        account_id=namespace.account_id,
+                                        provider=namespace.account.
+                                        verbose_provider,
+                                        service=self,
+                                        retry_interval=self.retry_interval,
+                                        extra_args=log_entry.extra_args)
+                    self.running_action_ids.add(log_entry.id)
+                    self.task_queue.put(task)
+                    self.log.info('Syncback added task',
+                                  process=self.process_number,
+                                  task_count=self.task_queue.qsize())
+
+        after = datetime.utcnow()
+        self.log.info('Syncback completed one iteration',
+                      process=self.process_number,
+                      duration=(after - before).total_seconds(),
+                      idle_workers=self.num_idle_workers)
+
+    def _restart_workers(self):
+        while len(self.workers) < self.num_workers:
+            worker = SyncbackWorker(self)
+            self.workers.add(worker)
+            self.num_idle_workers += 1
+            worker.start()
 
     def _run_impl(self):
         self.log.info('Starting syncback service',
@@ -183,23 +210,41 @@ class SyncbackService(gevent.Greenlet):
                       total_processes=self.total_processes,
                       keys=self.keys)
         while self.keep_running:
+            self._restart_workers()
             self._process_log()
-            gevent.sleep(self.poll_interval)
+            # Wait for a worker to finish or for the fixed poll_interval,
+            # whichever happens first.
+            timeout = self.poll_interval
+            if self.num_idle_workers == 0:
+                timeout = None
+            self.worker_did_finish.clear()
+            self.worker_did_finish.wait(timeout=timeout)
 
     def stop(self):
-        self.workers.kill()
         self.keep_running = False
+        self.workers.kill()
 
     def _run(self):
         retry_with_logging(self._run_impl, self.log)
 
+    def notify_worker_active(self):
+        self.num_idle_workers -= 1
 
-class SyncbackWorker(gevent.Greenlet):
+    def notify_worker_finished(self, action_id):
+        self.num_idle_workers += 1
+        self.worker_did_finish.set()
+        self.running_action_ids.remove(action_id)
+
+    def __del__(self):
+        if self.keep_running:
+            self.stop()
+
+
+class SyncbackTask(object):
     """
-    Worker greenlet responsible for executing a single syncback action.
-    The worker can retry the action up to ACTION_MAX_NR_OF_RETRIES times
-    before marking it as failed.
-    Note: Each worker holds an account-level lock, in order to ensure that
+    Task responsible for executing a single syncback action. We can retry the
+    action up to ACTION_MAX_NR_OF_RETRIES times before we mark it as failed.
+    Note: Each task holds an account-level lock, in order to ensure that
     actions are executed in the order they were first scheduled. This means
     that in the worst case, a misbehaving action can block other actions for
     the account from executing, for up to about
@@ -212,7 +257,9 @@ class SyncbackWorker(gevent.Greenlet):
     """
 
     def __init__(self, action_name, semaphore, action_log_id, record_id,
-                 account_id, provider, retry_interval=30, extra_args=None):
+                 account_id, provider, service, retry_interval=30,
+                 extra_args=None):
+        self.parent_service = weakref.ref(service)
         self.action_name = action_name
         self.semaphore = semaphore
         self.func = ACTION_FUNCTION_MAP[action_name]
@@ -222,7 +269,6 @@ class SyncbackWorker(gevent.Greenlet):
         self.provider = provider
         self.extra_args = extra_args
         self.retry_interval = retry_interval
-        gevent.Greenlet.__init__(self)
 
     def _log_to_statsd(self, action_log_status, latency=None):
         metric_names = [
@@ -235,7 +281,7 @@ class SyncbackWorker(gevent.Greenlet):
             if latency:
                 statsd_client.timing(metric, latency * 1000)
 
-    def _run(self):
+    def execute(self):
         with self.semaphore:
             log = logger.new(
                 record_id=self.record_id, action_log_id=self.action_log_id,
@@ -244,11 +290,13 @@ class SyncbackWorker(gevent.Greenlet):
 
             for _ in range(ACTION_MAX_NR_OF_RETRIES):
                 try:
+                    before_func = datetime.utcnow()
                     if self.extra_args:
                         self.func(self.account_id, self.record_id,
                                   self.extra_args)
                     else:
                         self.func(self.account_id, self.record_id)
+                    after_func = datetime.utcnow()
 
                     with session_scope(self.account_id) as db_session:
                         action_log_entry = db_session.query(ActionLog).get(
@@ -258,9 +306,13 @@ class SyncbackWorker(gevent.Greenlet):
                         latency = round((datetime.utcnow() -
                                          action_log_entry.created_at).
                                         total_seconds(), 2)
+                        func_latency = round((after_func - before_func).
+                                             total_seconds(), 2)
                         log.info('syncback action completed',
                                  action_id=self.action_log_id,
-                                 latency=latency)
+                                 latency=latency,
+                                 process=self.parent_service().process_number,
+                                 func_latency=func_latency)
                         self._log_to_statsd(action_log_entry.status, latency)
                         return
                 except Exception:
@@ -276,7 +328,33 @@ class SyncbackWorker(gevent.Greenlet):
                                          exc_info=True)
                             action_log_entry.status = 'failed'
                             self._log_to_statsd(action_log_entry.status)
+                            db_session.commit()
+                            return
                         db_session.commit()
 
                 # Wait before retrying
+                log.info("Syncback task retrying action after sleeping",
+                         duration=self.retry_interval)
+
+                # TODO(T6974): We might want to do some kind of exponential
+                # backoff with jitter to avoid the thundering herd problem if a
+                # provider suddenly starts having issues for a short period of
+                # time.
                 gevent.sleep(self.retry_interval)
+
+
+class SyncbackWorker(gevent.Greenlet):
+    def __init__(self, parent_service, task_timeout=60):
+        self.parent_service = weakref.ref(parent_service)
+        self.task_timeout = task_timeout
+        gevent.Greenlet.__init__(self)
+
+    def _run(self):
+        while self.parent_service().keep_running:
+            task = self.parent_service().task_queue.get()
+
+            try:
+                self.parent_service().notify_worker_active()
+                gevent.with_timeout(self.task_timeout, task.execute)
+            finally:
+                self.parent_service().notify_worker_finished(task.action_log_id)

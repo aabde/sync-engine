@@ -1,6 +1,12 @@
+cache:
+  directories:
+    - /usr/local/lib/python2.7/dist-packages
+    - /home/travis/virtualenv
 before_install:
   - mysql -uroot -Dmysql -e 'UPDATE user SET password=PASSWORD("root") WHERE user="root"; FLUSH PRIVILEGES;'
-
-install: "sudo ./setup.sh"
-# command to run tests
-script: INBOX_ENV=test py.test tests
+install:
+  - sudo -H pip install flake8
+  - sudo -H ./setup.sh
+script:
+  - flake8 .
+  - INBOX_ENV=test py.test tests -m "not networkrequired"

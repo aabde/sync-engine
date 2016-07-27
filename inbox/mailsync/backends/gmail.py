@@ -118,7 +118,7 @@ class GmailSyncMonitor(ImapSyncMonitor):
         # associated with the label.
         for deleted_label in deleted_labels:
             # Don't mark canonical labels such as Inbox, Important, etc.
-            if deleted_label.canonical_name is None:
+            if not deleted_label.canonical_name:
                 deleted_label.deleted_at = datetime.now()
                 category = deleted_label.category
                 category.deleted_at = datetime.now()
@@ -188,10 +188,10 @@ class GmailSyncMonitor(ImapSyncMonitor):
                 db_session.expunge(label)
 
                 rename_handler = LabelRenameHandler(
-                     account_id=self.account_id,
-                     namespace_id=self.namespace_id,
-                     label_name=label.name,
-                     semaphore=self.label_rename_semaphore)
+                    account_id=self.account_id,
+                    namespace_id=self.namespace_id,
+                    label_name=label.name,
+                    semaphore=self.label_rename_semaphore)
 
                 rename_handler.start()
 

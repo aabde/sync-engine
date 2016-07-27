@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# flake8: noqa: F811
 import smtplib
 import json
 import time
@@ -537,7 +538,7 @@ def test_sending_bad_raw_mime(patch_smtp, api_client):
                                         'X-My-Custom-Header: Random'
                                         '\r\n\r\n'
                                         'Yo.'), headers={'Content-Type':
-                                                             'message/rfc822'})
+                                                         'message/rfc822'})
 
     assert res.status_code == 400
 

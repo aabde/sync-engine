@@ -1,3 +1,4 @@
+# flake8: noqa: F401
 from datetime import datetime
 from inbox.events.remote_sync import EventSync
 from inbox.events.util import CalendarSyncResponse
@@ -32,9 +33,9 @@ def calendar_response():
 
 def calendar_response_with_update():
     return CalendarSyncResponse(
-                [], [Calendar(name='Super Important Meetings',
-                     uid='first_calendar_uid',
-                     read_only=False)])
+        [], [Calendar(name='Super Important Meetings',
+                      uid='first_calendar_uid',
+                      read_only=False)])
 
 
 def calendar_response_with_delete():

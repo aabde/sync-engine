@@ -11,8 +11,8 @@ from inbox.sqlalchemy_ext.util import bakery
 
 
 def _threads_filters(namespace_id, thread_public_id, started_before,
-                    started_after, last_message_before, last_message_after,
-                    subject):
+                     started_after, last_message_before, last_message_after,
+                     subject):
     filters = [Thread.namespace_id == namespace_id]
     if thread_public_id is not None:
         filters.append(Thread.public_id == thread_public_id)
@@ -39,60 +39,60 @@ def _threads_subqueries(namespace_id, from_addr, to_addr, cc_addr, bcc_addr,
     subqueries = []
     if from_addr is not None:
         subqueries.append(db_session.query(Message.thread_id).
-            join(MessageContactAssociation).
-            join(Contact).
-            filter(Contact.email_address == from_addr,
-                   Contact.namespace_id == namespace_id,
-                   MessageContactAssociation.field == 'from_addr').subquery())
+                          join(MessageContactAssociation).
+                          join(Contact).
+                          filter(Contact.email_address == from_addr,
+                                 Contact.namespace_id == namespace_id,
+                                 MessageContactAssociation.field == 'from_addr').subquery())
 
     if to_addr is not None:
         subqueries.append(db_session.query(Message.thread_id).
-            join(MessageContactAssociation).
-            join(Contact).
-            filter(Contact.email_address == to_addr,
-                   Contact.namespace_id == namespace_id,
-                   MessageContactAssociation.field == 'to_addr').subquery())
+                          join(MessageContactAssociation).
+                          join(Contact).
+                          filter(Contact.email_address == to_addr,
+                                 Contact.namespace_id == namespace_id,
+                                 MessageContactAssociation.field == 'to_addr').subquery())
 
     if cc_addr is not None:
         subqueries.append(db_session.query(Message.thread_id).
-            join(MessageContactAssociation).
-            join(Contact).
-            filter(Contact.email_address == cc_addr,
-                   Contact.namespace_id == namespace_id,
-                   MessageContactAssociation.field == 'cc_addr').subquery())
+                          join(MessageContactAssociation).
+                          join(Contact).
+                          filter(Contact.email_address == cc_addr,
+                                 Contact.namespace_id == namespace_id,
+                                 MessageContactAssociation.field == 'cc_addr').subquery())
 
     if bcc_addr is not None:
         subqueries.append(db_session.query(Message.thread_id).
-            join(MessageContactAssociation).
-            join(Contact).
-            filter(Contact.email_address == bcc_addr,
-                   Contact.namespace_id == namespace_id,
-                   MessageContactAssociation.field == 'bcc_addr').subquery())
+                          join(MessageContactAssociation).
+                          join(Contact).
+                          filter(Contact.email_address == bcc_addr,
+                                 Contact.namespace_id == namespace_id,
+                                 MessageContactAssociation.field == 'bcc_addr').subquery())
 
     if any_email is not None:
         subqueries.append(db_session.query(Message.thread_id).
-            join(MessageContactAssociation).
-            join(Contact).
-            filter(Contact.email_address.in_(any_email),
-                   Contact.namespace_id == namespace_id).subquery())
+                          join(MessageContactAssociation).
+                          join(Contact).
+                          filter(Contact.email_address.in_(any_email),
+                                 Contact.namespace_id == namespace_id).subquery())
 
     if filename is not None:
         subqueries.append(db_session.query(Message.thread_id).
-            join(Part).
-            join(Block).
-            filter(Block.filename == filename,
-                   Block.namespace_id == namespace_id).subquery())
+                          join(Part).
+                          join(Block).
+                          filter(Block.filename == filename,
+                                 Block.namespace_id == namespace_id).subquery())
 
     if unread is not None:
         read = not unread
         subqueries.append(db_session.query(Message.thread_id).
-            filter(Message.namespace_id == namespace_id,
-                   Message.is_read == read).subquery())
+                          filter(Message.namespace_id == namespace_id,
+                                 Message.is_read == read).subquery())
 
     if starred is not None:
         subqueries.append(db_session.query(Message.thread_id).
-            filter(Message.namespace_id == namespace_id,
-                   Message.is_starred == starred).subquery())
+                          filter(Message.namespace_id == namespace_id,
+                                 Message.is_starred == starred).subquery())
     return subqueries
 
 
@@ -125,14 +125,14 @@ def threads(namespace_id, subject, from_addr, to_addr, cc_addr, bcc_addr,
         query = db_session.query(Thread)
 
     filters = _threads_filters(namespace_id, thread_public_id, started_before,
-                              started_after, last_message_before,
-                              last_message_after, subject)
+                               started_after, last_message_before,
+                               last_message_after, subject)
 
     query = _threads_join_category(query, namespace_id, in_)
     query = query.filter(*filters)
     for subquery in _threads_subqueries(namespace_id, from_addr, to_addr,
-                                       cc_addr, bcc_addr, any_email, filename,
-                                       unread, starred, db_session):
+                                        cc_addr, bcc_addr, any_email, filename,
+                                        unread, starred, db_session):
         query = query.filter(Thread.id.in_(subquery))
 
     if view == 'count':
@@ -203,6 +203,16 @@ def messages_or_drafts(namespace_id, drafts, subject, from_addr, to_addr,
         query = bakery(lambda s: s.query(Message.public_id))
     else:
         query = bakery(lambda s: s.query(Message))
+
+        # Sometimes MySQL doesn't pick the right index. In the case of a
+        # regular /messages query, ix_message_ns_id_is_draft_received_date
+        # is the best index because we always filter on
+        # the namespace_id, is_draft and then order by received_date.
+        query += lambda q: q.with_hint(
+            Message,
+            'FORCE INDEX (ix_message_ns_id_is_draft_received_date)',
+            'mysql')
+
     query += lambda q: q.join(Thread)
     query += lambda q: q.filter(
         Message.namespace_id == bindparam('namespace_id'),
@@ -592,3 +602,32 @@ def metadata(namespace_id, app_id, view, limit, offset,
         return [x[0] for x in query.all()]
 
     return query.all()
+
+
+def metadata_for_app(app_id, limit, last, query_value, query_type, db_session):
+    if app_id is None:
+        raise ValueError('Must specify an app_id')
+
+    query = db_session.query(Metadata).filter(Metadata.app_id == app_id)
+    if last is not None:
+        query = query.filter(Metadata.id > last)
+
+    if query_type is not None:
+        if query_type not in METADATA_QUERY_OPERATORS:
+            raise ValueError(
+                'Invalid query operator for metadata query_type. Must be '
+                'one of {}'.format(', '.join(METADATA_QUERY_OPERATORS.keys())))
+        operator_filter = METADATA_QUERY_OPERATORS[query_type](query_value)
+        query = query.filter(operator_filter)
+
+    query = query.order_by(asc(Metadata.id)).limit(limit)
+    return query.all()
+
+METADATA_QUERY_OPERATORS = {
+    '>': lambda v: Metadata.queryable_value > v,
+    '>=': lambda v: Metadata.queryable_value >= v,
+    '<': lambda v: Metadata.queryable_value < v,
+    '<=': lambda v: Metadata.queryable_value <= v,
+    '==': lambda v: Metadata.queryable_value == v,
+    '!=': lambda v: Metadata.queryable_value != v,
+}
