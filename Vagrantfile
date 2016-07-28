@@ -9,6 +9,7 @@ VAGRANTFILE_API_VERSION = "2"
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = "ubuntu/precise64"
+  config.ssh.username = "vagrant"
 
   config.vm.provision "fix-no-tty", type: "shell" do |s|
     s.privileged = false
@@ -16,25 +17,27 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   end
 
   config.vm.provider :virtualbox do |vbox, override|
-    override.vm.network "private_network", ip: "192.168.10.200"
     vbox.memory = 1024
     vbox.cpus = 2
   end
 
   config.vm.provider :vmware_fusion do |vmware, override|
     override.vm.box = "hashicorp/precise64"
-    override.vm.network "private_network", ip: "192.168.10.200"
     vmware.vmx["memsize"] = "1024"
     vmware.vmx["numvcpus"] = "1"
   end
 
+  config.vm.define ENV['DIGITAL_OCEAN_MAIL_SERVER_DOMAIN']
   config.vm.provider :digital_ocean do |docean, override|
     override.ssh.private_key_path = "~/.ssh/id_rsa"
+    override.vm.box = "digital_ocean"
+    override.vm.box_url = "https://github.com/smdahlen/vagrant-digitalocean/raw/master/box/digital_ocean.box"
+    override.vm.hostname = ENV['DIGITAL_OCEAN_MAIL_SERVER_DOMAIN']
     docean.token = ENV['DIGITAL_OCEAN_TOKEN']
     docean.image = "ubuntu-12-04-x64"
     docean.region = "ams3"
     docean.size = "8gb"
-    docean.name = ENV['DIGITAL_OCEAN_MAIL_SERVER_DOMAIN']
+    docean.ssh_key_name = "Vagrant"
   end
 
   config.ssh.forward_agent = true
@@ -44,6 +47,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   #   "--natdnshostresolver1", "on",
   #   "--natdnsproxy1", "on",
   # ]
+  config.vm.network "private_network", ip: "192.168.10.200"
   config.vm.provision :shell, :inline => "apt-get update -q && cd /vagrant && ./setup.sh"
 
   # Share ports 5000 - 5009
@@ -68,14 +72,6 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       puts "Mounting share for #{fname} at #{mount_path}"
       config.vm.synced_folder fname, mount_path
     end
-  end
-
-  # See: https://stackoverflow.com/questions/14715678/vagrant-insecure-by-default
-  unless Vagrant.has_plugin?("vagrant-rekey-ssh")
-    warn "------------------- SECURITY WARNING -------------------"
-    warn "Vagrant is insecure by default.  To secure your VM, run:"
-    warn "    vagrant plugin install vagrant-rekey-ssh"
-    warn "--------------------------------------------------------"
   end
 end
 

@@ -198,7 +198,7 @@ pip install -e .
 color '35;1' 'Finished installing dependencies.'
 
 mkdir -p /etc/inboxapp
-chown $SUDO_UID:$SUDO_GID /etc/inboxapp
+chown vagrant:vagrant /etc/inboxapp
 
 color '35;1' 'Copying default development configuration to /etc/inboxapp'
 src=./etc/config-dev.json
@@ -221,7 +221,7 @@ fi
 # make sure that users upgrading from a previous release get file permissions
 # right
 chmod 0644 $dest
-chown $SUDO_UID:$SUDO_GID $dest
+chown vagrant:vagrant $dest
 
 color '35;1' 'Copying default secrets configuration to /etc/inboxapp'
 src=./etc/secrets-dev.yml
@@ -244,7 +244,7 @@ fi
 # make sure that users upgrading from a previous release get file permissions
 # right
 chmod 0600 $dest
-chown $SUDO_UID:$SUDO_GID $dest
+chown vagrant:vagrant $dest
 
 if ! $prod; then
     # Mysql config
@@ -283,27 +283,28 @@ color '35;1' 'Cleaning up...'
 apt-get -y autoremove
 
 mkdir -p /var/lib/inboxapp/parts
-chown -R $SUDO_UID:$SUDO_GID /var/lib/inboxapp
+chown -R vagrant:vagrant /var/lib/inboxapp
 
 mkdir -p /var/log/inboxapp
-chown $SUDO_UID:$SUDO_GID /var/log/inboxapp
+chown vagrant:vagrant /var/log/inboxapp
 
 mkdir -p /etc/inboxapp
 cp etc/config-dev.json /etc/inboxapp/config.json
 cp etc/secrets-dev.yml /etc/inboxapp/secrets.yml
-chown $SUDO_UID:$SUDO_GID /etc/inboxapp
+chown vagrant:vagrant /etc/inboxapp
 
 git config branch.master.rebase true
 
 # Set proper timezone
 echo 'UTC' | sudo tee /etc/timezone
+sudo dpkg-reconfigure  --frontend noninteractive tzdata
 
 # Start automatically sync engine and api at launch
-sudo echo "export MAIL_API_KEY='XXX'" >> /home/vagrant/.profile
+echo "export MAIL_API_KEY='XXX'" >> /home/vagrant/.profile
 source /home/vagrant/.profile
-sudo cp /vagrant/launcher /etc/init.d
-sudo chmod +x /etc/init.d/launcher
-sudo update-rc.d launcher defaults
+cp /vagrant/launcher /etc/init.d
+chmod +x /etc/init.d/launcher
+update-rc.d launcher defaults
 echo "launcher OK."
 
 color '35;1' 'Done!.'

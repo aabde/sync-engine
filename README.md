@@ -22,15 +22,21 @@ See API complementary documentation below to know the new endpoints and how to u
 
 5. `export DIGITAL_OCEAN_MAIL_SERVER_DOMAIN=[The domain name you want your server to be accessible at]`
 
-6. `vagrant up --provider=digital_ocean`
+6. Make sure the files `~/.ssh/id_rsa` and `~/.ssh/id_rsa.pub` exist
 
-7. `vagrant ssh`
+   if not run: `ssh-keygen -t rsa -f ~/.ssh/id_rsa`
 
-8. By default the `MAIL_API_KEY` is set to `XXX`, be sure to change it in `~/.profile`
+   if your ssh key is already on your DigitalOcean account replace the value of `docean.ssh_key_name` in the Vagrantfile (l. 40) by the name of your ssh key on DigitalOcean (https://cloud.digitalocean.com/settings/security), if the key is not on your DigitalOcean account yet, it will be added automatically and named "Vagrant"
 
-9. `/etc/init.d/launcher start`
+7. `vagrant up --provider=digital_ocean`
 
-10. check if the sync engine and the API were started correctly `/etc/init.d/launcher status`
+8. `vagrant ssh`
+
+9. By default the `MAIL_API_KEY` is set to `XXX`, be sure to change it in `~/.profile`
+
+10. `/etc/init.d/launcher start`
+
+11. check if the sync engine and the API were started correctly `/etc/init.d/launcher status`
 
 The server is up and running. To access the server's terminal use `vagrant ssh` (to connect from another computer than the one which mounted the server use `ssh vagrant@mail.inchbase.com` after adding the ssh public key of the computer in `~/.ssh/authorized_keys` on the server)
 
@@ -66,11 +72,9 @@ The sync engine will automatically begin syncing your account with the underlyin
 
 ## Nylas API Service
 
-The Nylas API service provides a REST API for interacting with your data. To start it in your development environment, run command below from the `/vagrant` folder within your VM. The api should start automatically but to start it manually you run:
+The Nylas API service provides a REST API for interacting with your data. To start it in your development environment, run command below from the `/vagrant` folder within your VM. The api should start automatically but to start it manually you can run:
 
-```bash
-$ bin/inbox-api
-```
+	bin/inbox-api
 
 The API Server runs on port 5555. At this point **You're now ready to make requests!** If you're using VirtualBox or VMWare fusion with Vagrant, port 5555 has already been forwarded to your host machine, so you can hit the API from your regular web browser.
 
