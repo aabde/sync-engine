@@ -28,15 +28,17 @@ See API complementary documentation below to know the new endpoints and how to u
 
    if your ssh key is already on your DigitalOcean account replace the value of `docean.ssh_key_name` in the Vagrantfile (l. 40) by the name of your ssh key on DigitalOcean (https://cloud.digitalocean.com/settings/security), if the key is not on your DigitalOcean account yet, it will be added automatically and named "Vagrant"
 
-7. `vagrant up --provider=digital_ocean`
+7. *(optional)* If you want to secure your server over SSL, add your SSL key file and SSL certificate file in the sync-engine folder, they have to be named `server.key` and `server.crt`
 
-8. `vagrant ssh`
+8. `vagrant up --provider=digital_ocean`
 
-9. By default the `MAIL_API_KEY` is set to `XXX`, be sure to change it in `~/.profile`
+9. `vagrant ssh`
 
-10. `/etc/init.d/launcher start`
+10. By default the `MAIL_API_KEY` is set to `XXX`, be sure to change it in `~/.profile`
 
-11. check if the sync engine and the API were started correctly `/etc/init.d/launcher status`
+11. `/etc/init.d/launcher start`
+
+12. check if the sync engine and the API were started correctly `/etc/init.d/launcher status`
 
 The server is up and running. To access the server's terminal use `vagrant ssh` (to connect from another computer than the one which mounted the server use `ssh vagrant@mail.inchbase.com` after adding the ssh public key of the computer in `~/.ssh/authorized_keys` on the server)
 
@@ -82,7 +84,9 @@ Now you can start writing your own application on top of the Nylas API! For more
 
 ### Complementary API Documentation
 
-If you mounted your server on DigitalOcean replace *localhost* in the following examples by the domain name of your server. 
+If you mounted your server on DigitalOcean replace *localhost* in the following examples by the domain name or the IP address of your server.
+
+If you added your SSL key file and SSL certificate file, replace *http* by *https*.
 
 The endpoint listing all connected accounts `http://localhost:5555/accounts` has been disabled for security reasons.
 

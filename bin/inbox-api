@@ -22,6 +22,7 @@ from gevent.pywsgi import WSGIServer
 from nylas.api.wsgi import NylasWSGIHandler
 from nylas.logging import get_logger, configure_logging
 from inbox.util.startup import preflight, load_overrides
+import os.path
 
 syncback = None
 http_server = None
@@ -69,6 +70,11 @@ def start(port, start_syncback):
 
     http_server = WSGIServer(('', int(port)), app, log=nylas_logger,
                              handler_class=NylasWSGIHandler)
+    if os.path.exists('/vagrant/server.key') and os.path.exists('/vagrant/server.crt'):
+        http_server = WSGIServer(('', int(port)), app, log=nylas_logger,
+                                 handler_class=NylasWSGIHandler,  
+                                 keyfile='/vagrant/server.key', certfile='/vagrant/server.crt')
+        
     nylas_logger.info('Starting API server', port=port)
     http_server.serve_forever()
 

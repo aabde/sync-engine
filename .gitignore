@@ -85,3 +85,7 @@ setup/
 
 # Pycharm
 .idea/
+
+server.crt
+
+server.key
