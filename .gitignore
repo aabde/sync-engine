@@ -91,3 +91,4 @@ server.crt
 server.key
 bash_history
 php_www/
+etc/secrets.yml
