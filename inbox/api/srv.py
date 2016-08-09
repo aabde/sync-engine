@@ -16,6 +16,7 @@ from ns_api import DEFAULT_LIMIT
 
 from inbox.webhooks.gpush_notifications import app as webhooks_api
 
+from inbox.config import config
 from inbox.util.startup import preflight
 from inbox.util.url import provider_from_address
 from inbox.auth.base import handler_from_provider
@@ -30,7 +31,7 @@ app = Flask(__name__)
 # Handle both /endpoint and /endpoint/ without redirecting.
 # Note that we need to set this *before* registering the blueprint.
 app.url_map.strict_slashes = False
-app.config['API_KEY'] = os.environ['MAIL_API_KEY']
+app.config['API_KEY'] = config.get_required('MAIL_API_KEY')
 
 def secure_compare(a, b):
     if not a or not b or len(a) != len(b):
