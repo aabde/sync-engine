@@ -68,12 +68,8 @@ def start(port, start_syncback):
 
     nylas_logger = get_logger()
 
-    http_server = WSGIServer(('', int(port)), app, log=nylas_logger,
+    http_server = WSGIServer(('127.0.0.1', int(port)), app, log=nylas_logger,
                              handler_class=NylasWSGIHandler)
-    if os.path.exists('/vagrant/server.key') and os.path.exists('/vagrant/server.crt'):
-        http_server = WSGIServer(('', int(port)), app, log=nylas_logger,
-                                 handler_class=NylasWSGIHandler,  
-                                 keyfile='/vagrant/server.key', certfile='/vagrant/server.crt')
         
     nylas_logger.info('Starting API server', port=port)
     http_server.serve_forever()
