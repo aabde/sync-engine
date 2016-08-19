@@ -218,13 +218,13 @@ def account_add():
             smtp_server_port = int(data.get('smtp_server_port'))
             if smtp_server_port:
                 auth_info['smtp_server_port'] = smtp_server_port
-            imap_username = int(data.get('imap_username'))
+            imap_username = data.get('imap_username')
             if imap_username:
                 auth_info['imap_username'] = imap_username
-            smtp_username = int(data.get('smtp_username'))
+            smtp_username = data.get('smtp_username')
             if smtp_username:
                 auth_info['smtp_username'] = smtp_username
-            smtp_password = int(data.get('smtp_password'))
+            smtp_password = data.get('smtp_password')
             if smtp_password:
                 auth_info['smtp_password'] = smtp_password
     elif provider == 'gmail':
