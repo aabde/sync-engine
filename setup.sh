@@ -170,6 +170,7 @@ if ! ${prod}; then
         # Ensure redis does not listen to every available interface but only to
         # locahost calls
         sed -i '/^#.*bind 127/s/^#//' /etc/redis/6379.conf
+        service redis_6379 restart
     fi
     color '34;1' 'redis-'${redis_version}' installed.'
 fi
