@@ -167,6 +167,9 @@ if ! ${prod}; then
         rm -f /tmp/6379.conf
         cd ../..
         rm -rf redis-${redis_version} redis-${redis_version}.tar.gz
+        # Ensure redis does not listen to every available interface but only to
+        # locahost calls
+        sed -i '/^#.*bind 127/s/^#//' /etc/redis/6379.conf
     fi
     color '34;1' 'redis-'${redis_version}' installed.'
 fi
