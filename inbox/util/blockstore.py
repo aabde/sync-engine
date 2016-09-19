@@ -13,6 +13,7 @@ STORE_MSG_ON_S3 = config.get('STORE_MESSAGES_ON_S3', None)
 if STORE_MSG_ON_S3:
     from boto.s3.connection import S3Connection
     from boto.s3.key import Key
+    from boto.s3 import connect_to_region
 else:
     from inbox.util.file import mkdirp
 
@@ -64,18 +65,31 @@ def get_from_blockstore(data_sha256):
         "Returned data doesn't match stored hash!"
     return value
 
-
-def _save_to_s3(data_sha256, data):
+def _get_connection:
     assert 'AWS_ACCESS_KEY_ID' in config, 'Need AWS key!'
     assert 'AWS_SECRET_ACCESS_KEY' in config, 'Need AWS secret!'
     assert 'MESSAGE_STORE_BUCKET_NAME' in config, \
         'Need bucket name to store message data!'
+    region = config.get('AWS_REGION')
+    AWS_ACCESS_KEY_ID = config.get('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = config.get('AWS_SECRET_ACCESS_KEY')
 
+    if region:
+        conn = connect_to_region('eu-west-1',
+           aws_access_key_id=AWS_ACCESS_KEY_ID,
+           aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+           is_secure=True,               # uncomment if you are not using ssl
+           calling_format = boto.s3.connection.OrdinaryCallingFormat(),
+           )
+    else:
+        conn = S3Connection(AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+
+
+def _save_to_s3(data_sha256, data):
     start = time.time()
 
     # Boto pools connections at the class level
-    conn = S3Connection(config.get('AWS_ACCESS_KEY_ID'),
-                        config.get('AWS_SECRET_ACCESS_KEY'))
+    conn = _get_connection()
     bucket = conn.get_bucket(config.get('MESSAGE_STORE_BUCKET_NAME'),
                              validate=False)
 
@@ -94,14 +108,7 @@ def _save_to_s3(data_sha256, data):
 
 
 def _is_in_s3(data_sha256):
-    assert 'AWS_ACCESS_KEY_ID' in config, 'Need AWS key!'
-    assert 'AWS_SECRET_ACCESS_KEY' in config, 'Need AWS secret!'
-    assert 'MESSAGE_STORE_BUCKET_NAME' in config, \
-        'Need bucket name to store message data!'
-
-    # Boto pools connections at the class level
-    conn = S3Connection(config.get('AWS_ACCESS_KEY_ID'),
-                        config.get('AWS_SECRET_ACCESS_KEY'))
+    conn = _get_connection()
     bucket = conn.get_bucket(config.get('MESSAGE_STORE_BUCKET_NAME'),
                              validate=False)
 
@@ -112,8 +119,7 @@ def _get_from_s3(data_sha256):
     if not data_sha256:
         return None
 
-    conn = S3Connection(config.get('AWS_ACCESS_KEY_ID'),
-                        config.get('AWS_SECRET_ACCESS_KEY'))
+    conn = _get_connection()
     bucket = conn.get_bucket(config.get('MESSAGE_STORE_BUCKET_NAME'),
                              validate=False)
 
